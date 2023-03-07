@@ -5,4 +5,5 @@
     <node  name="duckiebot_detection_node" pkg="$(arg pkg_name)" type="duckiebot_detection_node.py" output="screen"></node>
     <node  name="duckiebot_distance_node" pkg="$(arg pkg_name)" type="duckiebot_distance_node.py" output="screen" ></node>
 
+    <node  name="robot_follower_node" pkg="$(arg pkg_name)" type="robot_follower_node.py" output="screen" ></node>
 </launch>
