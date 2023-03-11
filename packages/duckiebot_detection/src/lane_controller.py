@@ -49,6 +49,15 @@ class LaneController:
         self.theta_pid_controller.set_auto_mode(False)
         self.theta_pid_controller.set_auto_mode(True)
 
+    def disable_controller(self):
+        """This will disable both PID controllers"""
+        self.d_pid_controller.set_auto_mode(False)
+        self.theta_pid_controller.set_auto_mode(False)
+
+    def enable_controller(self):
+        """This will enable both PID controllers"""
+        self.d_pid_controller.set_auto_mode(True)
+        self.theta_pid_controller.set_auto_mode(True)
 
     def compute_control_actions(self, d_err, phi_err, wheels_cmd_exec):
         """Main Function, computes the control action given the current errors"""
