@@ -60,15 +60,15 @@ class RobotFollowerNode(DTROS):
         self.rate = rospy.Rate(self.update_freq)
         self.d_offset = 0.0
         self.lane_controller_parameters = {
-            "Kp_d": 10.0,
+            "Kp_d": 6.0,
             "Ki_d": 0.75,
             "Kd_d": 0.125,
-            "Kp_theta": 5.0,
+            "Kp_theta": 3.0,
             "Ki_theta": 0.25,
-            "Kd_theta": 0.05,
+            "Kd_theta": 0.2,
             "sample_time": 1.0 / self.update_freq,
-            "d_bounds": (-2.0, 2.0),
-            "theta_bounds": (-2.0,2.0),
+            "d_bounds": (-3.0, 3.0),
+            "theta_bounds": (-3.0,3.0),
         }
         ## for stop line detection
         self.stop_distance = 0.15 # distance from the stop line that we should stop
@@ -77,6 +77,11 @@ class RobotFollowerNode(DTROS):
         self.max_y = 0.12   # If y value of detected red line is smaller than max_y we will not set at_stop_line true.
         self.stop_hist_len = 7
         self.stop_duration = 1.5
+        ## Vehicle detection
+        self.safe_distance = 0.4
+        self.camera_width = 640 # From the docs
+        self.direction_threshold = 0.3 # The threshold for the direction of the vehicle as a fraction of the camera width
+        self.direction_hist_len = 10
 
         # Initialize variables
         self.lane_pose = LanePose()
@@ -90,7 +95,10 @@ class RobotFollowerNode(DTROS):
         ## For Vehicle detection
         self.vehicle_detected = False
         self.vehicle_centers = VehicleCorners()
-        self.safe_distance = 0.5
+        self.vehicle_x_mean = 0.0
+        self.vehicle_direction = 0 # -1 left, 0 straight, 1 right
+        self.direction_hist = [] # Stores the last direction of the vehicle
+
 
         # Publishers
         ## Publish commands to the motors
@@ -142,7 +150,6 @@ class RobotFollowerNode(DTROS):
             )
         
         self.stop_line_reading()
-        self.rate.sleep()
 
     def cb_lane_pose(self, input_pose_msg):
         self.lane_pose = input_pose_msg
@@ -150,15 +157,44 @@ class RobotFollowerNode(DTROS):
 
     def cb_vehicle_centers(self, centers_msg):
         self.vehicle_centers = centers_msg
+        centers = self.vehicle_centers.corners
+        
+        # Only process lateral movement x
+        x_total = 0.0
+        if len(centers) > 0:
+            for center in centers:
+                x_total += center.x
+            self.vehicle_x_mean = x_total /  len(centers)
+            left_threshold = self.camera_width * self.direction_threshold
+            right_threshold = self.camera_width * (1 - self.direction_threshold)
+            if self.vehicle_x_mean < left_threshold:
+                curr_vehicle_direction = int(-1)
+            elif self.vehicle_x_mean > right_threshold:
+                curr_vehicle_direction = int(1)
+            else:
+                curr_vehicle_direction = int(0)
+
+            self.vehicle_direction = self.process_vehicle_direction_reading(curr_vehicle_direction)
+            print("Leader vehicle x mean: ", self.vehicle_x_mean, "Direction: ", self.vehicle_direction)
+        else:
+            self.vehicle_direction = self.process_vehicle_direction_reading(None)
+            self.vehicle_x_mean = self.camera_width / 2
+            
 
     def cb_detection(self, detection_msg):
         self.vehicle_detected = detection_msg.data
-        print("Vehicle detected: ", self.vehicle_detected)
+
 
     def cb_vehicle_distance(self, distance_msg):
         self.vehicle_distance = distance_msg.data
-        print("Distance to vehicle ahead: ", self.vehicle_distance)
         
+    def veh_leader_info(self):
+        if self.vehicle_detected:
+            print("Vehicle detected - distance:", self.vehicle_distance)
+            print("Vehicle Direction: ", self.vehicle_direction)
+        else:
+            print("No vehicle detected")
+
     def stop_line_reading(self):
         """Storing the current distance to the next stop line, if one is detected.
 
@@ -177,6 +213,18 @@ class RobotFollowerNode(DTROS):
             self.cmd_stop = True
         else:
             self.cmd_stop = False
+    
+    def process_vehicle_direction_reading(self, direction):
+        """Store the current direction of the vehicle ahead. None if no vehicle is detected."""
+
+        if len(self.direction_hist) > self.direction_hist_len:
+            self.direction_hist.pop(0)
+        
+        self.direction_hist.append(direction)
+
+        predicted_direction = mode(self.direction_hist)
+        return predicted_direction
+
 
     def get_control_action(self, pose_msg):
         """
@@ -184,6 +232,9 @@ class RobotFollowerNode(DTROS):
         """
         d_err = pose_msg.d - self.d_offset
         phi_err = pose_msg.phi
+
+        self.veh_leader_info()
+
 
         if self.cmd_stop or self.vehicle_ahead():
             v = 0.0
@@ -196,14 +247,21 @@ class RobotFollowerNode(DTROS):
         car_control_msg.header = pose_msg.header
 
         car_control_msg.v = v
-        car_control_msg.omega = omega * 2.5
+        car_control_msg.omega = omega * 2.0
         self.pub_car_cmd.publish(car_control_msg)
         if self.cmd_stop:
             # Stop at the intersection and process intersection action 
             rospy.sleep(1)
-            self.go_straight(pose_msg)
-            # self.turn_left(pose_msg)
-            # self.turn_right(pose_msg)
+            if self.vehicle_direction == 0:
+                self.go_straight(pose_msg)
+            elif self.vehicle_direction == 1:
+                self.turn_right(pose_msg)
+            elif self.vehicle_direction == -1:
+                self.turn_left(pose_msg)
+            else:
+                # If None should drive autonomously
+                self.go_straight(pose_msg)
+            
         else:
             self.rate.sleep()
     
