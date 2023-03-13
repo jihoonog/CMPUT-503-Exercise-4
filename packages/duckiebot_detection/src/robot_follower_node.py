@@ -84,7 +84,7 @@ class RobotFollowerNode(DTROS):
         self.safe_distance = 0.4
         self.camera_width = 640 # From the docs
         self.direction_threshold = 0.3 # The threshold for the direction of the vehicle as a fraction of the camera width
-        self.direction_hist_len = 10
+        self.direction_hist_len = 20
 
         # Initialize variables
         self.lane_pose = LanePose()
@@ -95,7 +95,7 @@ class RobotFollowerNode(DTROS):
         self.at_stop_line = False
         self.cmd_stop = False
         self.stop_hist = []
-        self.stop_time = 0.0
+        self.stop_time = rospy.Time.now()
         self.process_intersection = False
         ## For Vehicle detection
         self.vehicle_detected = False
@@ -299,12 +299,12 @@ class RobotFollowerNode(DTROS):
 
             self.process_intersection = True
             self.set_tail_lights("stop")
-            self.car_cmd(v, omega)
+            self.car_cmd(v, omega, pose_msg)
             rospy.sleep(self.stop_duration)
         elif self.vehicle_ahead():
             v = 0.0
             omega = 0.0
-            self.car_cmd(v, omega)
+            self.car_cmd(v, omega, pose_msg)
             self.set_tail_lights("stop")
         elif self.process_intersection:
             if self.vehicle_direction == 0:
@@ -325,13 +325,13 @@ class RobotFollowerNode(DTROS):
         else:
             v, omega = self.lane_pid_controller.compute_control_actions(d_err, phi_err, None)
 
-            self.car_cmd(v, omega)
+            self.car_cmd(v, omega, pose_msg)
 
         self.rate.sleep()
 
-    def cmd_car(self, v, omega):
+    def car_cmd(self, v, omega, lane_pose):
         car_control_msg = Twist2DStamped()
-        car_control_msg.header.stamp = rospy.Time.now()
+        car_control_msg.header = lane_pose.header
 
         car_control_msg.v = v
         car_control_msg.omega = omega * 2.0
@@ -347,9 +347,9 @@ class RobotFollowerNode(DTROS):
         """Make a right turn at an intersection"""
         self.lane_pid_controller.disable_controller()
         
-        self.car_cmd(v=0.3, omega=0)
+        self.car_cmd(v=0.3, omega=0, lane_pose=pose_msg)
         rospy.sleep(1)
-        self.car_cmd(v=0.3, omega = -4)
+        self.car_cmd(v=0.3, omega=-4, lane_pose=pose_msg)
         rospy.sleep(1.5)
         self.stop_hist = []
         self.cmd_stop = False
@@ -358,7 +358,7 @@ class RobotFollowerNode(DTROS):
     def turn_left(self, pose_msg):
         """Make a left turn at an intersection"""
         self.lane_pid_controller.disable_controller()
-        self.car_cmd(v=0.3, omega = 3.5)
+        self.car_cmd(v=0.3, omega = 3.5, lane_pose=pose_msg)
         rospy.sleep(4)
         self.stop_hist = []
         self.cmd_stop = False
@@ -367,7 +367,7 @@ class RobotFollowerNode(DTROS):
     def go_straight(self, pose_msg):
         """Go straight at an intersection"""
         self.lane_pid_controller.disable_controller()
-        self.car_cmd(v = 0.4, omega = 0.0)
+        self.car_cmd(v = 0.4, omega = 0.0, lane_pose=pose_msg)
         rospy.sleep(2)
         self.stop_hist = []
         self.cmd_stop = False
