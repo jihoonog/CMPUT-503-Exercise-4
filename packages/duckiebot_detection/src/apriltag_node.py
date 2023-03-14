@@ -19,7 +19,7 @@ from duckietown_msgs.srv import SetCustomLEDPattern, ChangePattern
 import math
 import geometry_msgs.msg
 import tf
-from std_msgs.msg import Header, Float32, String, Float64MultiArray,Float32MultiArray
+from std_msgs.msg import Header, Float32, String, Float64MultiArray, Float32MultiArray, Int32
 import tf2_ros
 
 
@@ -53,6 +53,7 @@ class AprilTagNode(DTROS):
         
         # Publisher
         # Keep this state so you don't need to reset the same color over and over again.
+        self.pub_tag_id = rospy.Publisher(f'/{self.veh}/tag_id', Int32, queue_size=1)
         self.current_led_pattern = 4
 
         self.frequency_control = 0
@@ -223,7 +224,7 @@ class AprilTagNode(DTROS):
             
             if len(tags) == 0:
                 # Means there's no tags present. Set the led to white.
-                print("No tags detected.")                
+                self.pub_tag_id.publish(-1)    
             else:
                 distance_list = []
                 tag_list = []
@@ -252,7 +253,7 @@ class AprilTagNode(DTROS):
                     self.transform_camera_view(tag.pose_t,tag.pose_R)
                     # Now here you can get the ground truth location and yaw, use it to modify your odometry.
                     tag_name = tag.tag_id
-                    print("tag name:", tag_name)
+                    self.pub_tag_id.publish(tag_name)
 
         self.frequency_control +=1
         # make new CompressedImage to publish

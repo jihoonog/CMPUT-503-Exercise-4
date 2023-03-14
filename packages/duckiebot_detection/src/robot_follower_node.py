@@ -30,7 +30,7 @@ from duckietown_msgs.msg import (
     LEDPattern,
     )
 from duckietown_msgs.srv import SetCustomLEDPattern
-from std_msgs.msg import Header, Float32, String, Float64MultiArray, Float32MultiArray
+from std_msgs.msg import Header, Float32, String, Float64MultiArray, Float32MultiArray, Int32
 from sensor_msgs.msg import CompressedImage
 from geometry_msgs.msg import Point32
 
@@ -97,6 +97,7 @@ class RobotFollowerNode(DTROS):
         self.stop_hist = []
         self.stop_time = 0.0
         self.process_intersection = False
+        self.tag_id = -1
         ## For Vehicle detection
         self.vehicle_detected = False
         self.vehicle_centers = VehicleCorners()
@@ -123,7 +124,7 @@ class RobotFollowerNode(DTROS):
         self.sub_centers = rospy.Subscriber(f"/{self.veh_name}/duckiebot_detection_node/centers", VehicleCorners, self.cb_vehicle_centers, queue_size=1)
         self.sub_circle_pattern_image = rospy.Subscriber(f"/{self.veh_name}/duckiebot_detection_node/detection_image/compressed", CompressedImage, queue_size=1)
         self.sub_detection = rospy.Subscriber(f"/{self.veh_name}/duckiebot_detection_node/detection", BoolStamped, self.cb_detection, queue_size=1)
-        
+        self.sub_tag_id = rospy.Subscriber(f"/{self.veh_name}/tag_id", Int32, self.cb_tag_id, queue_size=1)
         
         self.log("Initialized")
 
@@ -196,6 +197,10 @@ class RobotFollowerNode(DTROS):
 
     def cb_vehicle_distance(self, distance_msg):
         self.vehicle_distance = distance_msg.data
+    
+    def cb_tag_id(self, tag_msg):
+        if tag_msg.data != -1:
+            self.tag_id = tag_msg.data
         
     def veh_leader_info(self):
         if self.vehicle_detected:
@@ -323,8 +328,13 @@ class RobotFollowerNode(DTROS):
                 self.turn_left(pose_msg)
             else:
                 # If None should drive autonomously
-                self.set_tail_lights("white")
-                self.go_straight(pose_msg)
+                # If it detects a stop sign then it will turn right onto the outer lane
+                if self.tag_id in [169, 162]:
+                    self.set_tail_lights("left")
+                    self.turn_left(pose_msg)
+                else:
+                    self.set_tail_lights("white")
+                    self.go_straight(pose_msg)
             
             self.process_intersection = False
             
@@ -340,7 +350,7 @@ class RobotFollowerNode(DTROS):
         car_control_msg.header = lane_pose.header
 
         car_control_msg.v = v
-        car_control_msg.omega = omega * 2.0
+        car_control_msg.omega = omega * 2.05
         self.pub_car_cmd.publish(car_control_msg)
     
     def vehicle_ahead(self):
