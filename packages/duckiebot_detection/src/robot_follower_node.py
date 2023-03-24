@@ -77,11 +77,11 @@ class RobotFollowerNode(DTROS):
         self.min_segs = 20  # minimum number of red segments that we should detect to estimate a stop
         self.off_time = 2.0 # time to wait after we have passed the stop line
         self.max_y = 0.12   # If y value of detected red line is smaller than max_y we will not set at_stop_line true.
-        self.stop_hist_len = 7
+        self.stop_hist_len = 5
         self.stop_duration = 1.5
         self.stop_cooldown = 5 # The stop cooldown
         ## Vehicle detection
-        self.safe_distance = 0.4
+        self.safe_distance = 0.5
         self.camera_width = 640 # From the docs
         self.direction_threshold = 0.4 # The threshold for the direction of the vehicle as a fraction of the camera width
         self.direction_hist_len = 15
@@ -105,6 +105,7 @@ class RobotFollowerNode(DTROS):
         self.vehicle_direction = 0 # -1 left, 0 straight, 1 right
         self.direction_hist = [] # Stores the last direction of the vehicle
         self.current_led_pattern = "off"
+        self.vehicle_distance = 99
 
         # Publishers
         ## Publish commands to the motors
